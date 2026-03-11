@@ -1,17 +1,27 @@
 const uuid = require('uuid')
 const path = require('path');
-const {Food} = require('../models/models')
+const {Food, FoodInfo} = require('../models/models')
 const ApiError = require('../error/ApiError')
 
 class FoodController {
     async create(req, res, next) {
         try {
-            const {name, price, placeId, typeId, info} = req.body
+            let {name, price, placeId, typeId, info} = req.body
             const {image} = req.files
             let fileName = uuid.v4() + ".jpg"
             image.mv(path.resolve(__dirname, '..', 'static', fileName))
-            
-            const food = await Food.create({name, price, placeId, typeId, image: fileName})
+            const food = await Food.create({name, price, placeId, typeId, image: fileName});
+
+            if (info) {
+                info = JSON.parse(info)
+                info.forEach(i =>
+                    FoodInfo.create({
+                        title: i.title,
+                        description: i.description,
+                        foodId: food.id
+                    })
+                )
+            }
             
             return res.json(food)
         } catch (e) {
@@ -20,25 +30,35 @@ class FoodController {
     }
 
     async getAll(req, res) {
-        const {placeId, typeId} = req.query
+        let {placeId, typeId, limit, page} = req.query
+        page = page || 1
+        limit = limit || 9
+        let offset = page * limit - limit
         let foods;
         if (!placeId && !typeId) {
-            foods = await Food.findAll()
+            foods = await Food.findAndCountAll({limit, offset})
         }
         if (placeId && !typeId) {
-            foods = await Food.findAll({where: {placeId}})
+            foods = await Food.findAndCountAll({where: {placeId}, limit, offset})
         }
         if (!placeId && typeId) {
-            foods = await Food.findAll({where: {typeId}})
+            foods = await Food.findAndCountAll({where: {typeId}, limit, offset})
         }
         if (placeId && typeId) {
-            foods = await Food.findAll({where: {typeId, placeId}})
+            foods = await Food.findAndCountAll({where: {typeId, placeId}, limit, offset})
         }
         return res.json(foods)
     }
 
     async getOne(req, res) {
-        
+        const {id} = req.params
+        const food = await Food.findOne(
+            {
+                where: {id},
+                include: [{model: FoodInfo, as: 'info'}]
+            },
+        )
+        return res.json(food)
     }
 }
 
